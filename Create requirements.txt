@@ -1,0 +1,51 @@
+# Create and populate requirements file
+cat > requirements.txt << 'EOF'
+# Core FastAPI
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+
+# Document processing
+python-docx==0.8.11
+PyPDF2==3.0.1
+pptx==0.1.0
+
+# NLP & Text processing
+nltk==3.8.1
+spacy==3.7.2
+transformers==4.35.2
+torch==2.1.1
+
+# Vector databases & embeddings
+sentence-transformers==2.2.2
+pinecone-client==3.0.0
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.13.0
+
+# Async
+aiofiles==23.2.1
+
+# CORS
+python-cors==1.6.0
+EOF
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Download spaCy model
+python -m spacy download en_core_web_sm
+
+# Download NLTK data
+python << 'PYTHON'
+import nltk
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('wordnet')
+PYTHON
