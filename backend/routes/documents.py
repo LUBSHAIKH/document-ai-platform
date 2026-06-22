@@ -8,6 +8,11 @@ from backend.services.document_processor import DocumentProcessor
 from backend.services.nlp_processor import NLPProcessor
 from datetime import datetime
 import uuid
+from fastapi.responses import StreamingResponse
+import json
+
+from backend.services.rag_service import RAGService
+rag_service = RAGService()
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -167,3 +172,127 @@ async def delete_document(doc_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"message": "Document deleted successfully"}
+
+@router.post("/{doc_id}/index")
+async def index_document(doc_id: int, db: Session = Depends(get_db)):
+    """Index document for RAG - generate embeddings"""
+    
+    document = db.query(Document).filter(Document.id == doc_id).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not document.raw_text:
+        raise HTTPException(status_code=400, detail="No text to index")
+    
+    try:
+        # Index the document
+        rag_service.index_document(doc_id, document.raw_text)
+        
+        # Update database
+        document.indexed = True
+        document.indexed_at = datetime.utcnow()
+        
+        # Count chunks
+        from backend.services.nlp_processor import NLPProcessor
+        nlp = NLPProcessor()
+        chunks = nlp.chunk_text(document.raw_text)
+        document.embedding_chunks = len(chunks)
+        
+        db.commit()
+        
+        return {
+            "message": "Document indexed successfully",
+            "document_id": doc_id,
+            "chunks_created": len(chunks),
+            "indexed_at": document.indexed_at
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{doc_id}/ask")
+async def ask_question(
+    doc_id: int,
+    question: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Ask a question about a document (non-streaming)"""
+    
+    document = db.query(Document).filter(Document.id == doc_id).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not document.indexed:
+        raise HTTPException(status_code=400, detail="Document not indexed. Call /index first.")
+    
+    try:
+        answer = rag_service.answer_question(doc_id, question)
+        
+        return {
+            "document_id": doc_id,
+            "question": question,
+            "answer": answer
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{doc_id}/ask-stream")
+async def ask_question_streaming(
+    doc_id: int,
+    question: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Ask a question with streaming response"""
+    
+    document = db.query(Document).filter(Document.id == doc_id).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not document.indexed:
+        raise HTTPException(status_code=400, detail="Document not indexed")
+    
+    async def event_generator():
+        try:
+            for chunk in rag_service.answer_question_streaming(doc_id, question):
+                yield f"data: {json.dumps({'token': chunk})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.get("/{doc_id}/retrieve-context")
+async def retrieve_context(
+    doc_id: int,
+    query: str = Query(...),
+    top_k: int = Query(3, ge=1, le=10),
+    db: Session = Depends(get_db)
+):
+    """Retrieve relevant context for a query"""
+    
+    document = db.query(Document).filter(Document.id == doc_id).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not document.indexed:
+        raise HTTPException(status_code=400, detail="Document not indexed")
+    
+    try:
+        context = rag_service.retrieve_context(doc_id, query, top_k)
+        
+        return {
+            "document_id": doc_id,
+            "query": query,
+            "context": context,
+            "top_k": top_k
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
