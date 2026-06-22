@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Float
+from sqlalchemy import Column, Integer, String, DateTime, Text, Float, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 
@@ -11,17 +11,20 @@ class Document(Base):
     filename = Column(String, unique=True, index=True)
     original_filename = Column(String)
     file_path = Column(String)
-    file_type = Column(String)  # pdf, docx, txt, pptx
-    file_size = Column(Integer)  # in bytes
+    file_type = Column(String)
+    file_size = Column(Integer)
     
-    # Content
     raw_text = Column(Text)
     word_count = Column(Integer)
     page_count = Column(Integer, nullable=True)
     
-    # Metadata
+    # Week 2: New fields
+    indexed = Column(Boolean, default=False)
+    indexed_at = Column(DateTime, nullable=True)
+    embedding_chunks = Column(Integer, default=0)
+    
     upload_date = Column(DateTime, default=datetime.utcnow, index=True)
-    processed = Column(Integer, default=0)  # 0=not processed, 1=processed
+    processed = Column(Integer, default=0)
     
     def __repr__(self):
         return f"<Document {self.filename}>"
