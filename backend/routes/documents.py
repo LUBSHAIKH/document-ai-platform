@@ -1,12 +1,12 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, UploadFile, File, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from backend.database.db import get_db
+from backend.database.db import get_db, SessionLocal
 from backend.config import settings
 from backend.models.document import Document
 from backend.schemas.document import DocumentUploadResponse, DocumentDetail, DocumentListResponse
 from backend.services.document_processor import DocumentProcessor
 from backend.services.nlp_processor import NLPProcessor
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from fastapi.responses import StreamingResponse
 import json
@@ -20,68 +20,72 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 doc_processor = DocumentProcessor(settings.upload_dir)
 nlp_processor = NLPProcessor()
 
+
+def _extract_and_update(doc_id: int, file_path: str, file_ext: str):
+    """Background task: extract text from saved file and update the DB record."""
+    db = SessionLocal()
+    try:
+        raw_text, page_count = doc_processor.extract_text(file_path, file_ext)
+        raw_text = doc_processor.clean_text(raw_text)
+        word_count = doc_processor.get_word_count(raw_text)
+
+        doc = db.query(Document).filter(Document.id == doc_id).first()
+        if doc:
+            doc.raw_text = raw_text
+            doc.word_count = word_count
+            doc.page_count = page_count
+            doc.processed = 1
+            db.commit()
+    except Exception as e:
+        print(f"Background extraction failed for doc {doc_id}: {e}")
+    finally:
+        db.close()
+
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    """Upload a document and extract text"""
-    
-    # Validate file type
+    """Upload a document; text extraction runs in the background."""
+
     file_ext = "." + file.filename.split(".")[-1].lower()
     if file_ext not in settings.allowed_extensions:
         raise HTTPException(
             status_code=400,
             detail=f"File type {file_ext} not supported. Allowed: {settings.allowed_extensions}"
         )
-    
-    # Validate file size
+
     file_content = await file.read()
     if len(file_content) > settings.max_file_size:
         raise HTTPException(
             status_code=413,
             detail=f"File size exceeds maximum of {settings.max_file_size / (1024*1024):.1f}MB"
         )
-    
-    # Reset file pointer
+
     await file.seek(0)
-    
-    # Generate unique filename
     unique_filename = f"{uuid.uuid4()}_{file.filename}"
-    
+
     try:
-        # Save file
         file_path = doc_processor.save_uploaded_file(file, unique_filename)
-        
-        # Extract text
-        raw_text, page_count = doc_processor.extract_text(file_path, file_ext)
-        
-        # Clean text
-        raw_text = doc_processor.clean_text(raw_text)
-        
-        # Calculate word count
-        word_count = doc_processor.get_word_count(raw_text)
-        
-        # Create database record
+
         db_document = Document(
             filename=unique_filename,
             original_filename=file.filename,
             file_path=file_path,
             file_type=file_ext.lstrip("."),
             file_size=len(file_content),
-            raw_text=raw_text,
-            word_count=word_count,
-            page_count=page_count,
-            upload_date=datetime.utcnow(),
+            upload_date=datetime.now(timezone.utc),
             processed=0
         )
-        
         db.add(db_document)
         db.commit()
         db.refresh(db_document)
-        
+
+        background_tasks.add_task(_extract_and_update, db_document.id, file_path, file_ext)
+
         return db_document
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -145,7 +149,7 @@ async def analyze_document(doc_id: int, db: Session = Depends(get_db)):
             "entities": entities,
             "key_phrases": key_phrases,
             "chunk_count": len(chunks),
-            "analysis_timestamp": datetime.utcnow().isoformat()
+            "analysis_timestamp": datetime.now(timezone.utc).isoformat()
         }
     
     except Exception as e:
@@ -191,7 +195,7 @@ async def index_document(doc_id: int, db: Session = Depends(get_db)):
         
         # Update database
         document.indexed = True
-        document.indexed_at = datetime.utcnow()
+        document.indexed_at = datetime.now(timezone.utc)
         
         # Count chunks
         from backend.services.nlp_processor import NLPProcessor

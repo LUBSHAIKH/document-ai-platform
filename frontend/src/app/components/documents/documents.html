@@ -1,0 +1,65 @@
+<div class="documents-container">
+  <h2>📚 Your Documents</h2>
+
+  @if (isLoading()) {
+    <div class="loading">⏳ Loading documents...</div>
+  }
+
+  @if (errorMessage()) {
+    <div class="error-message">
+      ❌ {{ errorMessage() }}
+      <button (click)="loadDocuments()">Retry</button>
+    </div>
+  }
+
+  @if (!isLoading() && documents().length === 0) {
+    <div class="empty-state">
+      <p>📄 No documents yet. <a routerLink="/upload">Upload one!</a></p>
+    </div>
+  }
+
+  <div class="documents-grid">
+    @for (doc of documents(); track doc.id) {
+      <div class="document-card" (click)="selectDocument(doc)">
+        <div class="card-header">
+          <h3>{{ doc.original_filename }}</h3>
+          <span class="badge" [ngClass]="doc.indexed ? 'indexed' : 'pending'">
+            {{ doc.indexed ? '✓ Indexed' : '⏳ Pending' }}
+          </span>
+        </div>
+
+        <div class="card-body">
+          @if (doc.processed) {
+            <p><strong>Words:</strong> {{ doc.word_count }}</p>
+            <p><strong>Pages:</strong> {{ doc.page_count ?? '—' }}</p>
+          } @else {
+            <p class="processing">⚙️ Processing text...</p>
+          }
+          <p><strong>Uploaded:</strong> {{ getFormattedDate(doc.upload_date) }}</p>
+        </div>
+
+        <div class="card-footer">
+          @if (!doc.indexed) {
+            <button
+              (click)="indexDocument(doc.id)"
+              [disabled]="indexingIds().has(doc.id)"
+              class="btn-primary"
+            >
+              {{ indexingIds().has(doc.id) ? '⏳ Indexing...' : '🔍 Index' }}
+            </button>
+          }
+
+          @if (doc.indexed) {
+            <button (click)="selectDocument(doc)" class="btn-success">
+              💬 Ask Questions
+            </button>
+          }
+
+          <button (click)="deleteDocument(doc.id)" class="btn-danger">
+            🗑️ Delete
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+</div>

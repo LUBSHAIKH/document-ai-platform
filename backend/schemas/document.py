@@ -4,27 +4,27 @@ from typing import Optional
 
 class DocumentUploadResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
     filename: str
     original_filename: str
     file_type: str
     file_size: int
-    word_count: int
+    word_count: Optional[int] = None
     page_count: Optional[int] = None
     upload_date: datetime
     processed: int
 
 class DocumentDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: int
     filename: str
     original_filename: str
     file_type: str
     file_size: int
-    raw_text: str
-    word_count: int
+    raw_text: Optional[str] = None
+    word_count: Optional[int] = None
     page_count: Optional[int] = None
     upload_date: datetime
     processed: int

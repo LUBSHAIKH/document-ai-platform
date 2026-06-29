@@ -1,0 +1,37 @@
+<div class="upload-container">
+  <div class="upload-box">
+    <h2>📤 Upload Document</h2>
+
+    <div class="file-input-wrapper">
+      <input
+        type="file"
+        id="fileInput"
+        (change)="onFileSelected($event)"
+        accept=".pdf,.docx,.txt,.pptx"
+        class="file-input"
+      />
+      <label for="fileInput" class="file-label">
+        {{ selectedFile() ? selectedFile()!.name : 'Choose a file...' }}
+      </label>
+    </div>
+
+    <button
+      (click)="uploadFile()"
+      [disabled]="!selectedFile() || isLoading()"
+      class="btn-upload"
+    >
+      {{ isLoading() ? '⏳ Uploading...' : '🚀 Upload' }}
+    </button>
+
+    @if (uploadMessage()) {
+      <div class="message" [ngClass]="uploadMessage().includes('✅') ? 'success' : 'error'">
+        {{ uploadMessage() }}
+      </div>
+    }
+
+    <div class="info">
+      <p>✓ Supported: PDF, DOCX, TXT, PPTX</p>
+      <p>✓ Max size: 50MB</p>
+    </div>
+  </div>
+</div>
